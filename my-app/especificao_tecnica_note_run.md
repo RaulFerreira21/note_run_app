@@ -1,8 +1,8 @@
 # Especificação Técnica e Documento de Requisitos: Note Run
 
-**Versão:** 1.0.0 (Draft)  
+**Versão:** 1.1.0  
 **Metodologia:** Spec-Driven Development (SDD)  
-**Status:** Em Discussão / Planejamento  
+**Status:** Decisões da Seção 5 fechadas / Pronto para gerar specs do MVP 1  
 
 ---
 
@@ -45,7 +45,12 @@ A arquitetura será construída priorizando performance, tipagem forte e escalab
 
 ### 3.1. Front-end Mobile
 * **Framework:** [Angular Native (ng-native)](https://ng-native.com/)
-* **Justificativa:** Aproveitamento da expertise em Angular para construção de interfaces mobile verdadeiramente nativas, utilizando como ponto de partida a arquitetura do aplicativo de corrida de exemplo presente na documentação oficial da ferramenta.
+* **Justificativa:** Aproveitamento da expertise em Angular para construção de interfaces mobile verdadeiramente nativas.
+* **Correção (v1.1):** Não existe um "aplicativo de corrida de exemplo" completo na documentação oficial para usar como base. A documentação traz componentes individuais (incluindo um trecho de mapa com `polyline` de rota em [Maps](https://ng-native.com/packages/expo/maps.md)), mas a estrutura base de componentes e telas será construída pela equipe.
+* **Recursos nativos confirmados na documentação:**
+  * **Mapa:** `<expo-map>` via `@ng-native/expo/map-view` — Apple Maps no iOS, Google Maps no Android; suporta marcadores, `polylines` (traçado da rota), câmera e `isMyLocationEnabled`.
+  * **GPS (Foreground):** serviço `Location` via `@ng-native/expo/location` — `current()` (leitura única) e `start()` (contínuo) expõem a posição como *signal*; a permissão de *foreground* é solicitada pelo próprio serviço.
+  * **HTTP:** `provideNativeHttpClient()` (de `@ng-native/platform/http`), não o `provideHttpClient()` do Angular web.
 
 ### 3.2. Back-end (API & Serviços)
 * **Linguagem:** Go (Golang)
@@ -53,6 +58,7 @@ A arquitetura será construída priorizando performance, tipagem forte e escalab
   * Gerenciamento de autenticação e sessões (JWT / OAuth2).
   * CRUD de usuários, perfis e histórico de treinos.
   * Orquestração e integração com APIs de mapas e roteamento (ex: OpenStreetMap/OSRM, Mapbox ou Google Maps API) para o cálculo das rotas inteligentes.
+  * **Nota de risco (v1.1):** A geração de rota com distância-alvo exata nas topologias *Loop* e *Point-to-Point* não é trivial. O OSRM não oferece roteamento *round-trip* nativamente; o **GraphHopper** oferece (`round_trip`) e o Mapbox tem otimização. A escolha do *routing engine* fica condicionada a suportar *round-trip*, caso contrário será necessário um algoritmo próprio sobre o grafo. Fora do escopo do MVP 1.
 
 ### 3.3. Banco de Dados
 * **SGBD Principal:** PostgreSQL
@@ -65,32 +71,58 @@ A arquitetura será construída priorizando performance, tipagem forte e escalab
 Seguindo a abordagem iterativa, o **MVP 1** tem como objetivo validar a stack tecnológica (especialmente a integração do Angular Native com recursos nativos do dispositivo e comunicação com a API em Go).
 
 ### 4.1. Entregáveis do MVP 1
-1. **Setup do Ambiente:** Estruturação dos repositórios (Front-end Angular Native + Back-end Go + Container PostgreSQL).
-2. **Fluxo de Autenticação:** Tela de Login funcional integrada ao back-end.
+1. **Setup do Ambiente:** Estruturação do repositório front-end Angular Native e preparação do *development build*. O back-end Go + PostgreSQL será construído em fase posterior, com spec própria.
+2. **Fluxo de Autenticação:** Tela de Login funcional. **Como o back-end ainda não existe (v1.1), o front-end do MVP 1 roda contra um *mock/stub* que respeita um contrato REST definido**, a ser substituído pela API Go quando pronta.
 3. **Permissões Nativas:** Solicitação e validação de permissão de uso do GPS do dispositivo (Foreground Location).
 4. **Visualização de Mapa (Home):** Renderização de uma tela principal contendo um mapa interativo centralizado na coordenada geográfica atual (latitude/longitude) do usuário em tempo real.
+
+### 4.2. Pré-requisitos técnicos do MVP 1 (v1.1)
+* **Plataforma-alvo: Android-first.** O MVP 1 foca **exclusivamente em Android** nesta fase; o suporte a iOS será avaliado depois. A estrutura de código e a navegação são agnósticas de plataforma, então a decisão afeta apenas build e configuração nativa.
+* **Development build obrigatório:** `expo-maps` inclui código nativo e **não roda no Expo Go**. É necessário um *development build* (`npx expo run:android` ou EAS Build) desde o item 4.
+* **Chave Google Maps (Android):** o mapa no Android exige uma chave da *Maps SDK for Android* configurada no `app.json`, lida de fonte não versionada.
+* **iOS (adiado):** quando retomado, o Apple Maps é parte do sistema (sem chave), renderiza no iOS 17+ e toque em marcador exige iOS 18. A configuração deve evitar bloqueios Android-only que impeçam retomar o iOS.
+* **Status do `expo-maps`:** marcado como *alpha* pela Expo; pode haver mudanças entre versões do SDK.
 
 *(Nota: A geração de rotas, criação de perfil detalhado e gravação de treinos ficam explicitamente fora do escopo do MVP 1, entrando nas fases subsequentes).*
 
 ---
 
-## 5. Pontos Abertos para Discussão (Spec-Driven Development)
+## 5. Decisões Arquiteturais (Fechadas na v1.1)
 
-Para garantirmos que a especificação esteja fechada antes de codificarmos, precisamos debater e tomar decisões arquiteturais sobre os seguintes tópicos:
+As decisões abaixo foram debatidas e fechadas. Ficam registradas como *Architecture Decision Records* resumidos.
 
-1. **Banco de Dados e Dados Geoespaciais:**
-   * *Discussão:* O PostgreSQL com a extensão **PostGIS** é o padrão ouro do mercado para dados geográficos. Estamos de acordo em utilizar o PostGIS para salvar os traçados das corridas, ou preferimos salvar as rotas apenas como arrays JSON/GeoJSON simples no início (especialmente no MVP 1)?
-2. **Provedor de Mapas e Roteamento (Routing Engine):**
-   * *Discussão:* Qual serviço usaremos para renderizar o mapa no Angular Native e, futuramente, calcular as rotas de $500\text{ m}$ a $21\text{ km}$? (Opções comuns: *Mapbox*, *Google Maps Platform*, ou soluções open-source baseadas em *OpenStreetMap* + *GraphHopper/OSRM*).
-3. **Estratégia de Autenticação no MVP 1:**
-   * *Discussão:* Para o login do MVP 1, faremos autenticação tradicional (E-mail/Senha gerenciados pelo nosso back-end em Go com JWT) ou utilizaremos um provedor externo (Firebase Auth, Supabase, OAuth com Google/Apple)?
-4. **Padrão de Comunicação da API:**
-   * *Discussão:* A comunicação entre o app Angular Native e o servidor Go será feita via REST padrão (JSON) ou consideramos gRPC/GraphQL? (Para o MVP 1, REST costuma ser o caminho mais ágil).
+1. **Banco de Dados e Dados Geoespaciais — DECIDIDO:**
+   * **PostGIS no PostgreSQL desde o início** no back-end (custo baixo de adicionar e evita migração dolorosa depois). Observação: o MVP 1 não grava corridas, então o PostGIS não é exercitado nesta fase e não bloqueia o spec do front-end.
+2. **Provedor de Mapas e Roteamento (Routing Engine) — DECIDIDO:**
+   * **Mapa no app:** `<expo-map>` (Apple Maps no iOS, Google Maps no Android), já que é o componente nativo do ng-native.
+   * **Routing engine (fase posterior):** avaliar **GraphHopper** por suportar roteamento `round_trip`. Decisão final condicionada a benchmark na fase do motor de rotas.
+3. **Estratégia de Autenticação no MVP 1 — DECIDIDO:**
+   * **E-mail/senha com JWT gerenciado pelo back-end Go próprio** (sem provedor externo), alinhado ao objetivo de validar a integração com o Go. No MVP 1, consumido via *mock/stub* enquanto o back-end não existe.
+4. **Padrão de Comunicação da API — DECIDIDO:**
+   * **REST/JSON** para o MVP 1.
 
 ---
 
 ## 6. Próximos Passos do Planejamento
-- [ ] Responder e fechar as decisões da **Seção 5 (Pontos Abertos)**.
-- [ ] Especificar o contrato da API (Endpoints REST/Swagger) para o Login do MVP 1.
-- [ ] Desenhar a modelagem inicial do banco de dados (Tabela `users`).
-- [ ] Analisar o exemplo de *Running App* da documentação do `ng-native` para extrair a estrutura base de componentes e mapa.
+- [x] Responder e fechar as decisões da **Seção 5**. *(Fechadas na v1.1.)*
+- [x] Gerar as specs do MVP 1 (front-end), divididas por finalidade — ver Seção 7. *(Requisitos, design e tarefas redigidos.)*
+- [x] Definir o contrato REST de Login (request/response, erros) — ver Seção 7 e a spec `mvp1-autenticacao-login`. *(Formato interno do JWT fica a cargo da spec do back-end.)*
+- [ ] Executar as specs na ordem 1 → 2 → 3 (implementação).
+- [ ] (Fase do back-end) Desenhar a modelagem inicial do banco de dados (Tabela `users`) e spec própria do serviço Go.
+
+---
+
+## 7. Plano de Specs do MVP 1 (Front-end)
+
+O MVP 1 do front-end foi dividido em specs separadas por finalidade, para estruturar melhor o desenvolvimento. **As três specs estão com requisitos, design e tarefas redigidos** (em `.kiro/specs/`); a implementação ainda não foi executada.
+
+1. **`mvp1-setup-ambiente`** *(especificada)* — Development build Android, chave Google Maps, estrutura base de pastas/componentes, navegação (Router nativo) e esqueleto das telas.
+2. **`mvp1-autenticacao-login`** *(especificada)* — Tela de login, Signal Forms, serviço de auth consumindo contrato REST via *mock/stub*, armazenamento seguro do JWT (`SecureStorage`), guard de sessão e interceptor `Bearer`.
+3. **`mvp1-gps-mapa-home`** *(especificada)* — Permissão de GPS (foreground), serviço de localização e Home com `<expo-map>` centralizado na posição atual em tempo real, com máquina de estados (permissão → posição → mapa).
+
+**Ordem de execução:** 1 → 2 → 3 (cada spec depende da fundação da anterior).
+
+**Contrato REST de login** (consumido pelo front via *mock/stub*, base para a futura spec do back-end):
+`POST /auth/login` ← `{ email, password }` → `200 { token, user }` | `401` credenciais inválidas.
+
+*(O back-end Go + PostgreSQL terá sua própria spec em fase posterior.)*
